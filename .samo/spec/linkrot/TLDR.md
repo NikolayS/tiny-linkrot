@@ -24,9 +24,12 @@ See SPEC.md for the full goal statement.
 - 16. Security — SSRF & Outbound Destination Policy
 - 17. Output Redaction & Control-Character Sanitization
 - 18. Host Matching Canonicalization
-- 19. Per-Host Concurrency (Baseline)
+- 19. Per-Host Concurrency & Backpressure
 - 20. Clarifications
 - 21. Supplemental Testing Requirements
+- 22. Filesystem Traversal & Symlinks
+- 23. Work Budgets
+- 24. Document Status
 
 ## Next action
 
