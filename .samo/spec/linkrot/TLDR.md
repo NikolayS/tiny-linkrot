@@ -21,6 +21,12 @@ See SPEC.md for the full goal statement.
 - 13. Testing Strategy
 - 14. Future Work (post-v0.1)
 - 15. Open Questions
+- 16. Security — SSRF & Outbound Destination Policy
+- 17. Output Redaction & Control-Character Sanitization
+- 18. Host Matching Canonicalization
+- 19. Per-Host Concurrency (Baseline)
+- 20. Clarifications
+- 21. Supplemental Testing Requirements
 
 ## Next action
 

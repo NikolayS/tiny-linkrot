@@ -187,3 +187,89 @@ These are deliberately parked to keep v0.1 tight; §14 tracks them.
 1. Should reference-style link labels that are defined but never used be reported as warnings? (Leaning **no** for v0.1 — out of scope for link rot.)
 2. Should we treat 2xx responses with suspicious bodies (e.g., soft-404s like `<title>Not Found</title>` returning 200) as broken? (Leaning **no** — false-positive risk too high without per-site heuristics.)
 3. Is `User-Agent` customization enough, or do we also need `--header K:V` for niche sites that demand `Accept: text/html`? (Defer to v0.2.)
+
+## 16. Security — SSRF & Outbound Destination Policy
+
+New in v0.2. Added to harden default behavior when `linkrot` runs in CI against untrusted Markdown.
+
+- **Default-deny private destinations.** Every probe performs its own DNS resolution (A and AAAA) and inspects the resolved addresses *before* opening a TCP connection. If any resolved address falls in a reserved range, the probe is not issued and the link is classified as `skipped:blocked-destination`. Reserved ranges:
+  - IPv4 loopback `127.0.0.0/8`, private `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, link-local `169.254.0.0/16` (covers cloud metadata `169.254.169.254`), CGNAT `100.64.0.0/10`, multicast `224.0.0.0/4`, broadcast `255.255.255.255`, reserved `0.0.0.0/8`, `192.0.0.0/24`, `198.18.0.0/15`, `240.0.0.0/4`.
+  - IPv6 loopback `::1/128`, unique-local `fc00::/7`, link-local `fe80::/10`, multicast `ff00::/8`, documentation `2001:db8::/32`, IPv4-mapped (`::ffff:0:0/96`) that map into any blocked IPv4 range.
+- **Mixed-answer handling.** If a host resolves to both blocked and non-blocked addresses, the host is treated as blocked. This defeats DNS-rebinding bypasses.
+- **Per-hop re-check.** The policy is applied again before each redirect hop. A public URL that 3xx-redirects to a blocked destination produces `broken:blocked-destination-redirect`; the final URL is shown truncated at the hop that was refused.
+- **Opt-in `--allow-internal`.** Disables the SSRF block for the whole run. Must be set explicitly on the CLI; there is no env-var counterpart. When set, the report prefixes and suffixes output with a `⚠ internal destinations enabled` banner on both stdout and stderr.
+- **Interaction with `--allow-host` / `--deny-host`.** Deny matches still short-circuit to `skipped:host`. Allow entries do **not** bypass the SSRF block unless `--allow-internal` is also set. Evaluation order: deny → SSRF block → allow → default.
+- **Userinfo handling.** `user:pass@` in URLs is never sent in `Authorization` headers; it is stripped from the request and from the displayed form (see §17).
+
+## 17. Output Redaction & Control-Character Sanitization
+
+New in v0.2. All URLs, file paths, and free-form messages that originate from user-controlled input pass through a render filter before they are written to stdout, stderr, or the progress line.
+
+- **Userinfo.** The `user:pass@` component is removed from URLs in the rendered form and replaced with `<redacted>@`. Dedup normalization in §5 also drops userinfo so credential variants collapse into one probe.
+- **Sensitive query parameters.** Parameter values are replaced with `<redacted>` in the rendered form (the original value is still used for the probe) when the parameter name, case-insensitively, matches any of: `token`, `access_token`, `id_token`, `refresh_token`, `api_key`, `apikey`, `key`, `secret`, `signature`, `sig`, `password`, `auth`, `x-amz-signature`, `x-amz-credential`, `x-amz-security-token`.
+- **Control and format characters.** Before emission, the following are replaced by their `\uXXXX` escape: ASCII C0 controls except `\t`, DEL (`\x7f`), C1 controls (`\x80`–`\x9f`), ANSI/OSC introducers (`\x1b`, `\x9b`), bidi overrides (U+202A–U+202E, U+2066–U+2069), zero-width and BOM (U+200B–U+200F, U+FEFF). Line numbers, counts, and literal report chrome are safe and are not rewritten.
+- **Scope.** The filter applies uniformly to the TTY report, the stderr progress line, warnings, error messages, and any future machine-readable output.
+
+## 18. Host Matching Canonicalization
+
+New in v0.2. Applies to `--allow-host`, `--deny-host`, and any future host-scoped flag or policy.
+
+- Both the flag value and the URL host are converted to their IDNA A-label (Punycode) form and case-folded to lower case before comparison.
+- A trailing dot on either side is stripped.
+- IPv6 literals are provided on the CLI without surrounding brackets (e.g. `--deny-host ::1`) and are compared after RFC 5952 canonicalization.
+- Match semantics by prefix:
+  - `example.com` — matches the apex **and** all subdomains.
+  - `.example.com` — matches subdomains only, not the apex.
+  - `=example.com` — matches the apex only.
+- Ports are not part of the host value. A port-scoped entry uses `host:port` syntax and matches only that exact port.
+- Glob characters are not supported in v0.2.
+- Evaluation order (see also §16): deny → SSRF block → allow → default. If `--allow-host` is set and no allow entry matches, the link is `skipped:host`, even for public hosts.
+
+## 19. Per-Host Concurrency (Baseline)
+
+New in v0.2. Adds a conservative per-host cap so a single domain cannot monopolize the worker pool.
+
+- Default per-host cap: **4** concurrent in-flight requests.
+- Override via `--per-host-concurrency N` (`1 ≤ N ≤ --concurrency`).
+- Host identity uses the canonical form from §18, port-agnostic.
+- The global `--concurrency` pool remains the primary limit; per-host cap only gates dispatch.
+- A `429` or `503` with `Retry-After` from a host reduces that host's effective cap to 1 for the remainder of the run.
+
+## 20. Clarifications
+
+New in v0.2. The user-frozen sections above carry some ambiguities flagged in the last review round. These clarifications are binding where they narrow language elsewhere; they do not replace frozen text.
+
+- **Version labeling.** "v0.1" labels in §§2, 3, 4, 8, 11, 13, 14 describe the surface captured in this v0.2 document. They are not deferrals past v0.2.
+- **Timeout scope.** `--timeout` is a **whole-request** budget covering DNS, connect, TLS, write, read, and all redirect hops. §6.1 step 4 is the authoritative reading; §4's phrase "connect + read" is a description of what the budget covers, not a per-hop timer.
+- **HEAD → GET fallback.** The method switch in §6.1 step 2 is **not** a retry and does not consume a `--retries` slot. Retry policy in §6.3 then applies to the GET in the usual way.
+- **Invalid URL class.** A URL string that fails `new URL(...)` parsing is classified as `broken:invalid-url`, counted under `broken` in the summary, honored by `--fail-on=broken`, and never retried. §12's reference to `broken:network` with reason `invalid-url` is superseded.
+- **Manual redirect following.** The implementation must use `redirect: "manual"` (or an equivalent manual-follow seam) so that hop count, cycle detection, and the SSRF per-hop re-check (§16) are deterministic regardless of Bun's internal redirect cap.
+- **Retry-After.** Parsed as both delta-seconds and HTTP-date. Wait is capped to `min(Retry-After, --timeout − elapsed)`. If the cap is ≤ 0, the link resolves on its current state with no further retry. Wait time counts against the URL's wall-clock `--timeout` budget, but the subsequent attempt still consumes one `--retries` slot.
+- **Backoff.** Retry n (1-indexed) waits `200ms × 2^(n-1)` with full jitter applied uniformly in `[0, base]`. The wait is truncated so total URL wall-clock does not exceed `--timeout`.
+- **`--include`/`--exclude` merge.** User `--include` values **replace** the built-in includes. User `--exclude` values **append** to the built-in excludes. `--no-default-excludes` disables the built-in excludes.
+- **Scheme-skip accounting.** URLs filtered for non-HTTP(S) schemes (including `data:` image URLs) are excluded from both "links checked" and "skipped" in the summary and appear nowhere in the output. Reference-style image links `![alt][ref]` are handled identically to non-image reference links.
+- **Image probing.** On by default in v0.2 per §5. `--no-images` disables it without affecting other behavior.
+- **Fan-out rendering.** A URL present in multiple files is probed once. In the report it appears once under **each** file where it occurs; each occurrence shows that file's own line numbers. In the summary, `links checked: N unique (M occurrences)` reports N as unique URLs probed and M as the total source-location count; `ok`, `redirects`, `broken`, `skipped` count unique URLs.
+- **Extraction failure on one file.** A fatal parser error on a single file is treated as a skip (stderr warning, file excluded, other files still scanned). The summary's `files scanned` counts only fully-extracted files, and a `files skipped` line appears when non-zero. Total URL count for progress reflects the successfully extracted set.
+- **Env-var scope.** `--include`, `--exclude`, `--allow-host`, `--deny-host`, `--fail-on`, `--accept-redirects`, `--allow-internal`, `--per-host-concurrency`, and `--no-images` are intentionally CLI-only. They materially affect safety and classification and must be explicit at invocation.
+
+## 21. Supplemental Testing Requirements
+
+New in v0.2. In addition to §13, the following test cases are required.
+
+- **Signals.** SIGINT and SIGTERM during probing → exit 130, partial report emitted, in-flight requests aborted.
+- **Redirect limits.** Chain of exactly 10 hops (pass), 11 hops (→ `broken:redirect-loop`), 3-node cycle (→ `broken:redirect-loop`).
+- **Retry-After.** Delta-seconds, HTTP-date, value greater than `--timeout`, value of `0`, malformed value.
+- **Method switch.** HEAD → GET on 400, 403, 405; verify that the switch does not consume a retry slot.
+- **Precedence.** Flag > env > default for every flag that has an env-var counterpart in §10.
+- **Host canonicalization.** IDNA/Punycode, case folding, trailing dot, IPv6 literal, apex-only (`=`) and subdomain-only (`.`) prefix forms.
+- **SSRF policy.** Host resolves to loopback / RFC1918 / link-local / metadata / mixed public+private; public → private redirect; `--allow-internal` opt-in flips behavior and surfaces the banner.
+- **Per-host cap.** A burst of requests to a single host respects the default and the `--per-host-concurrency` override; dispatch to other hosts is not blocked.
+- **Global cap.** A burst spread across many hosts never exceeds `--concurrency` in-flight requests.
+- **Redaction and sanitization.** URLs with userinfo, sensitive query parameters, and embedded control / ANSI / bidi / zero-width characters render safely in the report and on stderr; file paths with the same classes of characters likewise.
+- **Determinism for golden tests.** A test mode (e.g., `LINKROT_DETERMINISTIC=1`) must render `duration` as a fixed placeholder and suppress the transient progress counter so golden snapshots are stable.
+- **Transport seam.** Unit tests can inject DNS NXDOMAIN, TCP RST after headers, TLS handshake failure, and header-phase timeout through an injectable fetch/transport seam, without live network.
+
+<!-- samospec:lead-directive -->
+The user has manually edited sections 1. Overview, 1. Purpose, 10. Configuration Precedence, 10. Security and Privacy Considerations, 11. Non-Goals (v0.1), 11. Open Questions, 12. Acceptance Criteria, 12. Error Handling & Robustness, 13. Testing Strategy, 14. Future Work (post-v0.1), 15. Open Questions, 2. Goals and Non-Goals, 2. Persona & Scope, 3. Runtime & Distribution, 3. User Stories, 4. CLI Surface, 5. Input Handling, 5. Link Extraction, 6. HTTP Probing, 6. Network Probing, 7. Concurrency Model, 7. Output, 8. Implementation Notes, 8. Output, 9. Exit Codes, 9. Testing of the spec since the last round. Treat their exact wording as final for those sections; do not rewrite them.
+<!-- samospec:lead-directive end -->
