@@ -1,0 +1,7 @@
+{
+  "name": "tiny-linkrot",
+  "version": "0.0.0",
+  "description": "Scan Markdown files for broken or redirected HTTP(S) links",
+  "type": "module",
+  "license": "MIT"
+}
