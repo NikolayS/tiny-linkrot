@@ -1,8 +1,8 @@
 {
   "slug": "linkrot",
   "phase": "draft",
-  "round_index": 2,
-  "version": "0.3.0",
+  "round_index": 3,
+  "version": "0.4.0",
   "persona": {
     "skill": "CLI software engineer",
     "accepted": true
