@@ -10,6 +10,7 @@ See SPEC.md for the full goal statement.
 - 2. Persona & Scope
 - 3. Runtime & Distribution
 - 4. CLI Surface
+- 4a. Additional Options (v0.2–v0.5)
 - 5. Link Extraction
 - 6. HTTP Probing
 - 7. Concurrency Model
