@@ -1,0 +1,99 @@
+{
+  "slug": "linkrot",
+  "persona": "Veteran \"Bun/TypeScript CLI engineer\" expert",
+  "generated_at": "2026-04-20T15:40:12.226Z",
+  "questions": [
+    {
+      "id": "link-sources",
+      "text": "Which input sources should v0.1 scan for links?",
+      "options": [
+        "Markdown files in a given directory (recursive)",
+        "A single file or stdin",
+        "Markdown + HTML files",
+        "Git repo (tracked files only)",
+        "Arbitrary glob patterns",
+        "decide for me",
+        "not sure — defer",
+        "custom"
+      ]
+    },
+    {
+      "id": "check-semantics",
+      "text": "What exactly counts as 'rotted' for a link?",
+      "options": [
+        "HTTP status >=400 after following redirects",
+        "Non-2xx (treat 3xx chain ending non-2xx as rot)",
+        "DNS failure or >=400 only (ignore timeouts)",
+        "Configurable per-status policy with allowlist",
+        "2xx required AND final URL matches original host",
+        "decide for me",
+        "not sure — defer",
+        "custom"
+      ]
+    },
+    {
+      "id": "concurrency-and-politeness",
+      "text": "How should we handle concurrency, retries, and per-host politeness?",
+      "options": [
+        "Fixed global concurrency (e.g. 10), no per-host limit",
+        "Global + per-host concurrency cap with retry/backoff",
+        "Per-host serial, global parallel, 1 retry on 5xx/timeout",
+        "User-configurable via flags, sensible defaults",
+        "Single-threaded sequential for v0.1 simplicity",
+        "decide for me",
+        "not sure — defer",
+        "custom"
+      ]
+    },
+    {
+      "id": "output-format",
+      "text": "What output format(s) should the CLI produce for v0.1?",
+      "options": [
+        "Human-readable text + non-zero exit on rot",
+        "JSON report to stdout",
+        "Both: pretty TTY, JSON via --json",
+        "JUnit XML for CI",
+        "Markdown report written to file",
+        "decide for me",
+        "not sure — defer",
+        "custom"
+      ]
+    },
+    {
+      "id": "scope-cuts",
+      "text": "Which adjacent features are explicitly OUT of scope for v0.1?",
+      "options": [
+        "No autofix/rewrite of rotted links",
+        "No archive.org fallback lookup",
+        "No caching between runs",
+        "No auth/cookies/custom headers",
+        "No crawling beyond the listed files (no link-following)",
+        "decide for me",
+        "not sure — defer",
+        "custom"
+      ]
+    }
+  ],
+  "answers": [
+    {
+      "id": "link-sources",
+      "choice": "Markdown files in a given directory (recursive)"
+    },
+    {
+      "id": "check-semantics",
+      "choice": "HTTP status >=400 after following redirects"
+    },
+    {
+      "id": "concurrency-and-politeness",
+      "choice": "Fixed global concurrency (e.g. 10), no per-host limit"
+    },
+    {
+      "id": "output-format",
+      "choice": "Human-readable text + non-zero exit on rot"
+    },
+    {
+      "id": "scope-cuts",
+      "choice": "No autofix/rewrite of rotted links"
+    }
+  ]
+}

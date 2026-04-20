@@ -1,0 +1,51 @@
+{
+  "phase": "draft",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 522,
+      "tokens": 130,
+      "blob": "818b6ca5b9bfcb8eec90ba8674373d1759250278",
+      "included": true,
+      "risk_flags": []
+    },
+    {
+      "path": "package.json",
+      "bytes": 170,
+      "tokens": 43,
+      "blob": "c73e1dd067feb68cfd6609b2f3d0e334fba72d1a",
+      "included": true,
+      "risk_flags": []
+    },
+    {
+      "path": ".samo/.gitignore",
+      "bytes": 69,
+      "tokens": 17,
+      "blob": "d9950aaaf117f8af431711029ca05e8e264a6edf",
+      "included": true,
+      "risk_flags": []
+    },
+    {
+      "path": ".samo/config.json",
+      "bytes": 1352,
+      "tokens": 338,
+      "blob": "3040248eb30299a1b3ace3e76366b7a9e38d8812",
+      "included": true,
+      "risk_flags": []
+    },
+    {
+      "path": ".samo/spec/linkrot/state.json",
+      "bytes": 426,
+      "tokens": 107,
+      "blob": "cf8f0a9af96648be08ed658972e9ea7be11b98f3",
+      "included": true,
+      "risk_flags": []
+    }
+  ],
+  "risk_flags": [],
+  "budget": {
+    "phase": "draft",
+    "tokens_used": 635,
+    "tokens_budget": 30000
+  }
+}
