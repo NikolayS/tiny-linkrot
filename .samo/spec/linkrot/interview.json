@@ -1,17 +1,31 @@
 {
   "slug": "linkrot",
-  "persona": "Veteran \"Bun/TypeScript CLI engineer\" expert",
-  "generated_at": "2026-04-20T15:40:12.226Z",
+  "persona": "Veteran \"Node/Bun CLI & link-checking tooling engineer\" expert",
+  "generated_at": "2026-04-20T16:03:55.016Z",
   "questions": [
     {
-      "id": "link-sources",
-      "text": "Which input sources should v0.1 scan for links?",
+      "id": "scope-and-scale",
+      "text": "What is the primary input scope and expected scale for v0.1 (what does 'tiny' mean here)?",
       "options": [
-        "Markdown files in a given directory (recursive)",
-        "A single file or stdin",
-        "Markdown + HTML files",
-        "Git repo (tracked files only)",
-        "Arbitrary glob patterns",
+        "Single Markdown file, <500 links",
+        "A directory tree of Markdown/MDX files, up to ~5k links",
+        "A sitemap.xml or single starting URL with shallow crawl (depth<=2)",
+        "A plain newline-delimited list of URLs from stdin/file",
+        "Mixed: files + stdin URLs, auto-detected",
+        "decide for me",
+        "not sure — defer",
+        "custom"
+      ]
+    },
+    {
+      "id": "runtime-and-distribution",
+      "text": "Which runtime and distribution model should v0.1 target given the repo name 'tiny-linkrot'?",
+      "options": [
+        "Bun-only, single-file executable via `bun build --compile`",
+        "Node 20+ only, published to npm with a bin entry",
+        "Dual Node/Bun support, npm-published, no native deps",
+        "Bun-first for dev, Node-compatible build shipped to npm",
+        "Deno-compatible as well (web-standard fetch only)",
         "decide for me",
         "not sure — defer",
         "custom"
@@ -19,13 +33,13 @@
     },
     {
       "id": "check-semantics",
-      "text": "What exactly counts as 'rotted' for a link?",
+      "text": "What HTTP semantics define a 'broken' link, and how aggressive should checking be?",
       "options": [
-        "HTTP status >=400 after following redirects",
-        "Non-2xx (treat 3xx chain ending non-2xx as rot)",
-        "DNS failure or >=400 only (ignore timeouts)",
-        "Configurable per-status policy with allowlist",
-        "2xx required AND final URL matches original host",
+        "HEAD then GET fallback; 4xx/5xx = broken; follow redirects up to 5",
+        "GET-only with Range: bytes=0-0; timeout 10s; 3 retries with backoff",
+        "HEAD-only, fast-fail, no retries (truly tiny)",
+        "HEAD+GET, treat 403/429 as 'warn' not 'broken', honor Retry-After",
+        "Configurable per-host rules with sensible defaults",
         "decide for me",
         "not sure — defer",
         "custom"
@@ -33,41 +47,27 @@
     },
     {
       "id": "concurrency-and-politeness",
-      "text": "How should we handle concurrency, retries, and per-host politeness?",
+      "text": "How should concurrency and per-host politeness be handled out of the box?",
       "options": [
-        "Fixed global concurrency (e.g. 10), no per-host limit",
-        "Global + per-host concurrency cap with retry/backoff",
-        "Per-host serial, global parallel, 1 retry on 5xx/timeout",
-        "User-configurable via flags, sensible defaults",
-        "Single-threaded sequential for v0.1 simplicity",
+        "Global concurrency=10, no per-host limit",
+        "Global 20 + per-host cap of 4 with simple token bucket",
+        "Per-host serial (1), global 50",
+        "Adaptive: start at 10/host, back off on 429/5xx",
+        "User-configured via flag only, default 8 global",
         "decide for me",
         "not sure — defer",
         "custom"
       ]
     },
     {
-      "id": "output-format",
-      "text": "What output format(s) should the CLI produce for v0.1?",
+      "id": "output-and-exit",
+      "text": "What are the default output format and CI exit-code contract for v0.1?",
       "options": [
-        "Human-readable text + non-zero exit on rot",
-        "JSON report to stdout",
-        "Both: pretty TTY, JSON via --json",
-        "JUnit XML for CI",
-        "Markdown report written to file",
-        "decide for me",
-        "not sure — defer",
-        "custom"
-      ]
-    },
-    {
-      "id": "scope-cuts",
-      "text": "Which adjacent features are explicitly OUT of scope for v0.1?",
-      "options": [
-        "No autofix/rewrite of rotted links",
-        "No archive.org fallback lookup",
-        "No caching between runs",
-        "No auth/cookies/custom headers",
-        "No crawling beyond the listed files (no link-following)",
+        "Human TTY report + `--json` flag; exit 1 on any broken link",
+        "JSON by default, `--pretty` for humans; exit 1 on broken, 2 on warn",
+        "SARIF output for GitHub code scanning + text summary",
+        "JUnit XML for CI + text summary; exit 1 on failures",
+        "Markdown report written to file + exit 0 always (report-only)",
         "decide for me",
         "not sure — defer",
         "custom"
@@ -76,24 +76,24 @@
   ],
   "answers": [
     {
-      "id": "link-sources",
-      "choice": "Markdown files in a given directory (recursive)"
+      "id": "scope-and-scale",
+      "choice": "Single Markdown file, <500 links"
+    },
+    {
+      "id": "runtime-and-distribution",
+      "choice": "Bun-only, single-file executable via `bun build --compile`"
     },
     {
       "id": "check-semantics",
-      "choice": "HTTP status >=400 after following redirects"
+      "choice": "HEAD then GET fallback; 4xx/5xx = broken; follow redirects up to 5"
     },
     {
       "id": "concurrency-and-politeness",
-      "choice": "Fixed global concurrency (e.g. 10), no per-host limit"
+      "choice": "Global concurrency=10, no per-host limit"
     },
     {
-      "id": "output-format",
-      "choice": "Human-readable text + non-zero exit on rot"
-    },
-    {
-      "id": "scope-cuts",
-      "choice": "No autofix/rewrite of rotted links"
+      "id": "output-and-exit",
+      "choice": "Human TTY report + `--json` flag; exit 1 on any broken link"
     }
   ]
 }

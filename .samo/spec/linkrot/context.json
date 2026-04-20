@@ -18,6 +18,14 @@
       "risk_flags": []
     },
     {
+      "path": ".samo/spec/linkrot/state.json",
+      "bytes": 444,
+      "tokens": 111,
+      "blob": "0ec036444f90e71effce15c45c3e7f03f6bc89a4",
+      "included": true,
+      "risk_flags": []
+    },
+    {
       "path": ".samo/.gitignore",
       "bytes": 69,
       "tokens": 17,
@@ -27,17 +35,9 @@
     },
     {
       "path": ".samo/config.json",
-      "bytes": 1352,
-      "tokens": 338,
-      "blob": "3040248eb30299a1b3ace3e76366b7a9e38d8812",
-      "included": true,
-      "risk_flags": []
-    },
-    {
-      "path": ".samo/spec/linkrot/state.json",
-      "bytes": 426,
-      "tokens": 107,
-      "blob": "cf8f0a9af96648be08ed658972e9ea7be11b98f3",
+      "bytes": 1379,
+      "tokens": 345,
+      "blob": "eb416bdd6d5904f15ed4065947ffe0537bd218e4",
       "included": true,
       "risk_flags": []
     }
@@ -45,7 +45,7 @@
   "risk_flags": [],
   "budget": {
     "phase": "draft",
-    "tokens_used": 635,
+    "tokens_used": 646,
     "tokens_budget": 30000
   }
 }

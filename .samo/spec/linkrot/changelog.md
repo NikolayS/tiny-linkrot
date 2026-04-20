@@ -1,6 +1,8 @@
 # changelog
 
-## v0.1 — 2026-04-20T15:40:12.226Z
+## v0.1 — 2026-04-20T16:03:55.016Z
 
 - Initial draft authored by the lead.
-- Persona: Veteran "Bun/TypeScript CLI engineer" expert
+- Persona: Veteran "Node/Bun CLI & link-checking tooling engineer" expert
+
+- user-edit before round 1

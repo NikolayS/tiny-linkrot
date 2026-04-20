@@ -6,21 +6,18 @@ See SPEC.md for the full goal statement.
 
 ## Scope summary
 
-- 1. Persona
-- 2. Idea
-- 3. Goals / Non-goals
-- 4. Interview outcomes (frozen decisions)
-- 5. CLI surface
-- 6. Link extraction
-- 7. Probing
-- 8. Report format
-- 9. Project layout
-- 10. Testing
-- 11. Dependencies
-- 12. Performance budget
-- 13. Publishing
-- 14. Open questions / deferred to v0.2
-- 15. Acceptance criteria for v0.1
+- 1. Overview
+- 2. Goals and Non-Goals
+- 3. User Stories
+- 4. CLI Surface
+- 5. Input Handling
+- 6. Network Probing
+- 7. Output
+- 8. Implementation Notes
+- 9. Testing
+- 10. Security and Privacy Considerations
+- 11. Open Questions
+- 12. Acceptance Criteria
 
 ## Next action
 
