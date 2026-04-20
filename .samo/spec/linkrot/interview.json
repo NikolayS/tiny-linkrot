@@ -1,31 +1,17 @@
 {
   "slug": "linkrot",
-  "persona": "Veteran \"Node/Bun CLI & link-checking tooling engineer\" expert",
-  "generated_at": "2026-04-20T16:03:55.016Z",
+  "persona": "Veteran \"CLI software engineer\" expert",
+  "generated_at": "2026-04-20T17:42:22.158Z",
   "questions": [
     {
-      "id": "scope-and-scale",
-      "text": "What is the primary input scope and expected scale for v0.1 (what does 'tiny' mean here)?",
+      "id": "input-source",
+      "text": "What is the primary input format the CLI should accept for link discovery?",
       "options": [
-        "Single Markdown file, <500 links",
-        "A directory tree of Markdown/MDX files, up to ~5k links",
-        "A sitemap.xml or single starting URL with shallow crawl (depth<=2)",
-        "A plain newline-delimited list of URLs from stdin/file",
-        "Mixed: files + stdin URLs, auto-detected",
-        "decide for me",
-        "not sure — defer",
-        "custom"
-      ]
-    },
-    {
-      "id": "runtime-and-distribution",
-      "text": "Which runtime and distribution model should v0.1 target given the repo name 'tiny-linkrot'?",
-      "options": [
-        "Bun-only, single-file executable via `bun build --compile`",
-        "Node 20+ only, published to npm with a bin entry",
-        "Dual Node/Bun support, npm-published, no native deps",
-        "Bun-first for dev, Node-compatible build shipped to npm",
-        "Deno-compatible as well (web-standard fetch only)",
+        "Markdown files (recursive directory scan)",
+        "Plain text file with one URL per line",
+        "Sitemap.xml URL",
+        "Stdin pipe of URLs",
+        "All of the above (auto-detect)",
         "decide for me",
         "not sure — defer",
         "custom"
@@ -33,41 +19,51 @@
     },
     {
       "id": "check-semantics",
-      "text": "What HTTP semantics define a 'broken' link, and how aggressive should checking be?",
+      "text": "What HTTP behavior counts as a 'broken' link?",
       "options": [
-        "HEAD then GET fallback; 4xx/5xx = broken; follow redirects up to 5",
-        "GET-only with Range: bytes=0-0; timeout 10s; 3 retries with backoff",
-        "HEAD-only, fast-fail, no retries (truly tiny)",
-        "HEAD+GET, treat 403/429 as 'warn' not 'broken', honor Retry-After",
-        "Configurable per-host rules with sensible defaults",
+        "Only 4xx/5xx after following redirects",
+        "4xx/5xx plus DNS/timeout failures",
+        "Any non-2xx status (including 3xx redirect chains)",
+        "4xx/5xx plus soft-404 heuristics on body content",
         "decide for me",
         "not sure — defer",
         "custom"
       ]
     },
     {
-      "id": "concurrency-and-politeness",
-      "text": "How should concurrency and per-host politeness be handled out of the box?",
+      "id": "concurrency-model",
+      "text": "How should the checker handle concurrency and rate limiting?",
       "options": [
-        "Global concurrency=10, no per-host limit",
-        "Global 20 + per-host cap of 4 with simple token bucket",
-        "Per-host serial (1), global 50",
-        "Adaptive: start at 10/host, back off on 429/5xx",
-        "User-configured via flag only, default 8 global",
+        "Fixed global worker pool (e.g. --concurrency=N)",
+        "Per-host concurrency cap with global pool",
+        "Sequential by default, opt-in parallelism",
+        "Adaptive based on response latency",
         "decide for me",
         "not sure — defer",
         "custom"
       ]
     },
     {
-      "id": "output-and-exit",
-      "text": "What are the default output format and CI exit-code contract for v0.1?",
+      "id": "output-format",
+      "text": "What output formats must v0.1 support for results?",
       "options": [
-        "Human TTY report + `--json` flag; exit 1 on any broken link",
-        "JSON by default, `--pretty` for humans; exit 1 on broken, 2 on warn",
-        "SARIF output for GitHub code scanning + text summary",
-        "JUnit XML for CI + text summary; exit 1 on failures",
-        "Markdown report written to file + exit 0 always (report-only)",
+        "Human-readable TTY only",
+        "TTY + JSON",
+        "TTY + JSON + JUnit XML (for CI)",
+        "TTY + JSON + SARIF",
+        "decide for me",
+        "not sure — defer",
+        "custom"
+      ]
+    },
+    {
+      "id": "exit-and-ci",
+      "text": "How should exit codes and CI integration behave?",
+      "options": [
+        "Non-zero exit on any broken link",
+        "Configurable threshold (--fail-on=broken|warn|none)",
+        "Always exit 0; surface results in output only",
+        "Distinct codes per failure class (network vs 4xx vs 5xx)",
         "decide for me",
         "not sure — defer",
         "custom"
@@ -76,24 +72,24 @@
   ],
   "answers": [
     {
-      "id": "scope-and-scale",
-      "choice": "Single Markdown file, <500 links"
-    },
-    {
-      "id": "runtime-and-distribution",
-      "choice": "Bun-only, single-file executable via `bun build --compile`"
+      "id": "input-source",
+      "choice": "Markdown files (recursive directory scan)"
     },
     {
       "id": "check-semantics",
-      "choice": "HEAD then GET fallback; 4xx/5xx = broken; follow redirects up to 5"
+      "choice": "Only 4xx/5xx after following redirects"
     },
     {
-      "id": "concurrency-and-politeness",
-      "choice": "Global concurrency=10, no per-host limit"
+      "id": "concurrency-model",
+      "choice": "Fixed global worker pool (e.g. --concurrency=N)"
     },
     {
-      "id": "output-and-exit",
-      "choice": "Human TTY report + `--json` flag; exit 1 on any broken link"
+      "id": "output-format",
+      "choice": "Human-readable TTY only"
+    },
+    {
+      "id": "exit-and-ci",
+      "choice": "Non-zero exit on any broken link"
     }
   ]
 }

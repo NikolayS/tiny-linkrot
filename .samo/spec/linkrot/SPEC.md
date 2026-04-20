@@ -1,276 +1,189 @@
-# tiny-linkrot — SPEC v0.1
+# tiny-linkrot — SPEC v0.2
 
-## 1. Overview
+## 1. Purpose
 
-`tiny-linkrot` is a Bun + TypeScript command-line tool that scans Markdown files, extracts HTTP(S) links, probes each link over the network, and prints a human-readable (or JSON) report of broken and redirected links grouped by source file. It is the reference demo for the samospec workflow.
+`tiny-linkrot` is a small Bun + TypeScript CLI that scans a directory of Markdown files, extracts every HTTP(S) link, probes each link over the network, and prints a human-readable report of broken and redirected links grouped by source file. It is designed to be run locally by authors and in CI to prevent link rot in documentation.
 
-This specification covers **v0.1**, the first shippable release. Anything not explicitly in scope below is deferred.
+## 2. Persona & Scope
 
-## 2. Goals and Non-Goals
+This spec is authored for a veteran CLI software engineer. It assumes familiarity with Bun, TypeScript, `fetch`, Markdown tooling, POSIX exit codes, and CI conventions. Out of scope for v0.1: JSON/SARIF output, auth-gated links, JavaScript-rendered pages, non-HTTP schemes (mailto:, ftp:, ...), caching across runs, and fixing links.
 
-### 2.1 Goals
+## 3. Runtime & Distribution
 
-- Detect dead HTTP(S) links in a single Markdown file with acceptable speed on inputs up to ~500 links.
-- Ship as a single self-contained executable produced by `bun build --compile`.
-- Provide both a human-oriented terminal report and a stable `--json` output suitable for CI.
-- Exit non-zero when any link is classified as broken, so CI pipelines can gate on it.
-
-### 2.2 Non-goals (explicitly deferred)
-
-- Directory/recursive crawl (multiple files, globs, `.gitignore` awareness).
-- Non-Markdown inputs (HTML, MDX, AsciiDoc, plain text).
-- Anchor / fragment validation (`#section`) — fragments are stripped before probing.
-- Relative-path link resolution to the local filesystem.
-- Persistent cache between runs.
-- Per-host rate limiting, robots.txt, or politeness beyond a global concurrency cap.
-- Authentication, cookies, proxy configuration.
-- Retries or exponential backoff beyond a single HEAD→GET fallback.
-- Npm distribution, Homebrew formula, Docker image (a single compiled binary is the only artifact).
-- Windows support is best-effort; first-class targets are macOS and Linux.
-
-## 3. User Stories
-
-1. **Doc author, local check.** As a docs maintainer, I run `tiny-linkrot README.md` and see a grouped report of any broken or redirected links so I can fix them before pushing.
-2. **CI gate.** As a CI pipeline, I run `tiny-linkrot --json docs/GUIDE.md > report.json`; the exit code tells me pass/fail and the JSON is archived as a build artifact.
-3. **Spot check a redirect chain.** As a reviewer, I see in the report that a link returned `301 → 200` with the final URL, so I know whether to update the source.
+- **Runtime:** Bun ≥ 1.1 (uses built-in `fetch`, `Bun.Glob`, `Bun.file`).
+- **Language:** TypeScript, `"type": "module"`.
+- **Entry point:** `bin/linkrot.ts` exposed as `linkrot` via `package.json#bin`.
+- **Install:** `bun install` + `bun link`, or `bunx tiny-linkrot`.
+- **No runtime deps** beyond Bun built-ins for v0.1. Dev deps: `typescript`, `@types/bun`, a Markdown parser (see §5).
 
 ## 4. CLI Surface
 
-### 4.1 Invocation
-
 ```
-tiny-linkrot [options] <file.md>
+linkrot [path] [options]
 ```
 
-Exactly one positional argument: a path to a Markdown file. If zero or more than one positional is supplied, print usage to stderr and exit `2`.
+`path` defaults to `.` (current working directory) and may be a file or a directory. Directories are scanned recursively.
 
-### 4.2 Options (v0.1)
+### Options (v0.1)
 
-| Flag            | Type      | Default | Meaning                                                                 |
-|-----------------|-----------|---------|-------------------------------------------------------------------------|
-| `--json`        | boolean   | false   | Emit machine-readable JSON to stdout instead of the human report.       |
-| `--timeout <ms>`| integer   | 10000   | Per-request timeout in milliseconds (applies to each HEAD and each GET).|
-| `--concurrency <n>` | integer | 10    | Max in-flight requests globally. Must be ≥1.                           |
-| `--user-agent <s>` | string | `tiny-linkrot/0.1 (+https://github.com/NikolayS/tiny-linkrot)` | Value of `User-Agent` header. |
-| `--version`     | boolean   | —       | Print version and exit `0`.                                             |
-| `--help` / `-h` | boolean   | —       | Print usage and exit `0`.                                               |
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--concurrency N` | `8` | Size of the global worker pool. |
+| `--timeout MS` | `10000` | Per-request timeout (connect + read) in ms. |
+| `--retries N` | `1` | Retries on network errors and 5xx (excluding 501, 505). Exponential backoff: 200ms × 2^n, jittered ±25%. |
+| `--user-agent STRING` | `tiny-linkrot/<version> (+https://github.com/NikolayS/tiny-linkrot)` | Value of the `User-Agent` header. |
+| `--include GLOB` (repeatable) | `**/*.md`, `**/*.markdown` | File globs to scan. |
+| `--exclude GLOB` (repeatable) | `**/node_modules/**`, `**/.git/**` | File globs to skip. |
+| `--allow-host HOST` (repeatable) | *(none)* | Host allowlist. If set, only these hosts are checked; all other links are reported as `skipped:host`. |
+| `--deny-host HOST` (repeatable) | *(none)* | Host denylist. Matching links are reported as `skipped:host`. |
+| `--accept-redirects` | off | Treat 3xx → 2xx chains as `ok` instead of `redirect`. |
+| `--fail-on LEVEL` | `broken` | One of `broken`, `redirect`, `any`. Controls which findings flip the exit code. |
+| `--no-color` | off | Disable ANSI color in the report. Auto-disabled when stdout is not a TTY. |
+| `--version`, `-v` | — | Print version and exit 0. |
+| `--help`, `-h` | — | Print help and exit 0. |
 
-Unknown flags are a fatal error (exit `2`, usage to stderr).
+Unknown flags cause exit code 2 (usage error) with a one-line error on stderr.
 
-### 4.3 Exit codes
+## 5. Link Extraction
 
-- `0` — all links OK (no broken links; redirects are not broken).
-- `1` — at least one link classified as **broken** (see §6.3).
-- `2` — usage / argument error (bad flag, missing file, file not readable, not a file).
-- `3` — internal error (uncaught exception, runtime panic). Always accompanied by a stack trace on stderr.
+- Markdown is parsed with a real parser (v0.1: `marked` or equivalent) — **not** regex — so that links inside code fences and inline code spans are ignored.
+- Extracted link kinds:
+  - `[text](url)` inline links
+  - `[text][ref]` + `[ref]: url` reference links
+  - Bare autolinks `<https://example.com>`
+  - Image links `![alt](url)` are also checked.
+- Only `http:` and `https:` URLs are probed. `mailto:`, `tel:`, relative links, and fragment-only (`#foo`) links are ignored silently.
+- URLs are normalized before deduplication: lowercase scheme+host, default-port stripping, empty path → `/`, percent-encoding normalized, fragment stripped. Query strings are preserved as-is.
+- A URL that appears in multiple files is probed **once** and its status fanned out to all source locations in the report.
 
-Redirects alone never cause a non-zero exit; they are reported as warnings.
+## 6. HTTP Probing
 
-## 5. Input Handling
+### 6.1 Request shape
 
-### 5.1 File read
+1. Send `HEAD` with `redirect: "follow"`, configured timeout, and the CLI's `User-Agent`.
+2. If the final status is `405 Method Not Allowed`, `403`, `400`, or the server returns a network-level failure that could plausibly be a HEAD-averse server (e.g., RST, EOF), retry once with `GET` using a streaming body that is aborted as soon as headers arrive.
+3. Honor up to 10 redirects. More than 10 → `broken:redirect-loop`.
+4. Apply `--timeout` to the **whole** request including all redirect hops.
 
-The input path is resolved against the current working directory, read with `Bun.file(path).text()`, and treated as UTF-8. Files larger than 10 MiB are rejected with exit `2` (defensive guard; v0.1 is not designed for huge inputs).
+### 6.2 Classification (per unique URL)
 
-### 5.2 Link extraction
+| Class | Trigger |
+| --- | --- |
+| `ok` | Final response 2xx. |
+| `redirect` | At least one 3xx in the chain, final response 2xx, and `--accept-redirects` not set. The report shows the final URL. |
+| `broken:http` | Final response 4xx or 5xx after following redirects. |
+| `broken:network` | DNS failure, connection refused, TLS error, reset, timeout after retries. |
+| `broken:redirect-loop` | > 10 hops or a cycle detected. |
+| `skipped:host` | Host excluded via `--allow-host`/`--deny-host`. |
+| `skipped:scheme` | Non-HTTP(S) scheme (reported only in `--help`-level verbose mode; otherwise filtered silently). |
 
-Links are extracted from the raw Markdown source using a **GitHub-Flavored Markdown-aware parser**, not a regex, to avoid false positives inside fenced code blocks. The implementation SHOULD use a well-known parser (`marked`, `markdown-it`, or the equivalent). Extracted link sources:
+"Broken" per the interview contract = `broken:*`. `redirect` is informational by default and only fails CI when `--fail-on=redirect` or `--fail-on=any`.
 
-- Inline links: `[text](https://example.com)`
-- Reference links: `[text][ref]` + `[ref]: https://example.com`
-- Autolinks: `<https://example.com>`
-- Bare URLs in prose (GFM autolink extension) when the parser surfaces them.
-- Image links: `![alt](https://example.com/a.png)` — treated identically to regular links.
+### 6.3 Retries & backoff
 
-**Excluded** from extraction:
+- Retries apply to `broken:network` and to final 5xx **except** 501 and 505.
+- 429 and 503 with a `Retry-After` header respect that header up to `--timeout`, counted against `--retries`.
+- Retries never apply to 4xx other than 408, 425, 429.
 
-- Any URL appearing inside a fenced or indented code block.
-- Any URL inside an inline code span (`` `like this` ``).
-- Non-HTTP schemes: `mailto:`, `ftp:`, `tel:`, `javascript:`, relative paths, `#fragment` — all ignored silently.
+## 7. Concurrency Model
 
-### 5.3 URL normalization
+- A single global fixed-size worker pool of `--concurrency` workers consumes a queue of unique URLs.
+- No per-host throttling in v0.1 (explicit non-goal, documented in §11).
+- File scanning and URL extraction run to completion **before** probing starts, so the total URL count is known and the progress display is accurate.
+- Cancellation: `SIGINT`/`SIGTERM` aborts in-flight requests, drains the queue, and prints the partial report with an `interrupted` banner. Exit code in that case is 130.
 
-Before probing, each URL is:
+## 8. Output
 
-1. Parsed with the WHATWG URL API. Unparseable URLs are reported as broken with reason `invalid_url` and do not produce a network request.
-2. Fragment (`#...`) stripped (fragments are not validated in v0.1).
-3. Deduplicated: identical post-normalization URLs are probed once, but every source occurrence (file + line) is recorded so the report still shows each mention.
+### 8.1 Human-readable TTY report (only format in v0.1)
 
-### 5.4 Scale assumption
+The report is grouped by source file, in the order the files were discovered (stable, sorted lexicographically by path relative to CWD). Example:
 
-The tool is designed and tested for **a single Markdown file with up to ~500 links**. Larger inputs may work but are not a v0.1 target. The 10 MiB file cap and the 500-link soft assumption together set the expected working envelope.
+```
+docs/intro.md
+  ✗ https://example.com/gone               404 Not Found
+    line 12
+  ↪ http://example.com/moved               → https://example.com/moved  (301)
+    line 27, line 41
+  ✗ https://unreachable.invalid            network: getaddrinfo ENOTFOUND
+    line 33
 
-## 6. Network Probing
+README.md
+  ✓ 14 ok, 0 redirects, 0 broken
 
-### 6.1 Request flow per unique URL
-
-1. Issue `HEAD` with `redirect: 'manual'` so we can observe redirect status codes directly.
-2. If the response status is a redirect (`301`, `302`, `303`, `307`, `308`):
-   - Follow the `Location` header, resolving relatively against the current URL.
-   - Repeat step 1 on the new URL, incrementing a hop counter.
-   - Hard cap: **5 redirect hops**. On the 6th, classify as broken with reason `too_many_redirects`.
-   - Detect loops (any URL repeated in the chain) → broken with reason `redirect_loop`.
-3. If the `HEAD` response is `405 Method Not Allowed`, `501 Not Implemented`, or the server returned a network-level error that could plausibly be HEAD-specific (e.g. connection reset before headers), retry **once** with `GET` using `redirect: 'manual'` and the same redirect handling as above. The GET body is discarded without being read into memory (`response.body?.cancel()`).
-4. Any other response status is the final status for that URL.
-
-Only a single HEAD→GET fallback is attempted per hop; there is no retry loop, no backoff, no jitter.
-
-### 6.2 Timeout
-
-Each individual HTTP request (each HEAD, each GET) uses an `AbortController` with the `--timeout` value (default 10 000 ms). A timeout is classified as broken with reason `timeout`. The timeout applies per request, not per URL — a URL that redirects five times may spend up to `6 × timeout` wall-clock time in the worst case.
-
-### 6.3 Broken vs. OK vs. Redirected
-
-| Final outcome                              | Classification | Exit contribution |
-|--------------------------------------------|----------------|-------------------|
-| Final status `2xx`, no redirects           | `ok`           | none              |
-| Final status `2xx`, via 1–5 redirects      | `redirected`   | none (warning)    |
-| Final status `3xx` that terminates the chain without a usable `Location` | `broken` (`bad_redirect`) | exit 1 |
-| Final status `4xx` or `5xx`                | `broken`       | exit 1            |
-| Network error (DNS, TCP, TLS, reset)       | `broken` (`network_error`) | exit 1   |
-| Timeout                                    | `broken` (`timeout`) | exit 1     |
-| `too_many_redirects` / `redirect_loop`     | `broken`       | exit 1            |
-| `invalid_url`                              | `broken`       | exit 1            |
-
-Note: `3xx` appearing inside a chain is normal and not itself broken.
-
-### 6.4 Concurrency
-
-A simple global semaphore caps in-flight requests at `--concurrency` (default **10**). There is no per-host cap in v0.1 — if a Markdown file points every link at one host, that host will see up to 10 concurrent requests. The README MUST document this limitation so users probing sensitive or rate-limited hosts can lower `--concurrency` manually.
-
-### 6.5 Headers
-
-Outbound headers on every request:
-
-- `User-Agent`: value of `--user-agent`.
-- `Accept: */*`
-- `Accept-Encoding: identity` on HEAD (avoid servers that mishandle compressed HEAD responses); default on GET.
-
-No cookies, no auth, no custom headers configurable in v0.1.
-
-## 7. Output
-
-### 7.1 Human-readable report (default)
-
-Written to **stdout**. Progress indicators, if any, go to **stderr** so stdout stays parseable when redirected. Minimum content:
-
-- A header line with the file path and totals: `tiny-linkrot: 3 broken, 2 redirected, 12 ok (17 links, 15 unique)`.
-- For each source file (v0.1 always one), a grouped list ordered by line number. Each entry shows:
-  - Line number (1-based, from the source Markdown).
-  - Status label, colorized when stdout is a TTY: `BROKEN` (red), `REDIRECT` (yellow), `OK` suppressed by default (see below).
-  - Original URL.
-  - For `BROKEN`: reason code and, if available, numeric status (e.g. `404 Not Found`, `timeout after 10000ms`, `DNS NXDOMAIN`).
-  - For `REDIRECT`: final URL and final status (e.g. `→ https://example.com/new (200)`).
-- OK links are **not** printed in human mode (noise reduction). The summary counts them.
-- Color uses ANSI escapes only when `process.stdout.isTTY` is true **and** `NO_COLOR` is not set in the environment.
-
-### 7.2 JSON output (`--json`)
-
-When `--json` is set, stdout is a **single JSON document** (not NDJSON), terminated by a newline, with this shape:
-
-```json
-{
-  "tool": "tiny-linkrot",
-  "version": "0.1.0",
-  "started_at": "2026-04-20T16:03:55.016Z",
-  "finished_at": "2026-04-20T16:04:01.220Z",
-  "input": { "path": "README.md", "bytes": 2048 },
-  "summary": { "total": 17, "unique": 15, "ok": 12, "redirected": 2, "broken": 3 },
-  "links": [
-    {
-      "url": "https://example.com/dead",
-      "occurrences": [{ "file": "README.md", "line": 42 }],
-      "status": "broken",
-      "reason": "http_status",
-      "http_status": 404,
-      "final_url": "https://example.com/dead",
-      "redirect_chain": [],
-      "duration_ms": 312
-    }
-  ]
-}
+Summary
+  files scanned : 23
+  links checked : 118 unique  (142 occurrences)
+  ok            : 110
+  redirects     :   5
+  broken        :   3
+  skipped       :   0
+  duration      : 4.1s
 ```
 
-Field contract (stable across v0.1 patches; additive changes allowed, renames/removals are breaking):
+- Only files with at least one non-`ok` finding are expanded; files that are fully clean are collapsed into a single `✓ N ok` summary line.
+- Colors: green `✓`, yellow `↪`, red `✗`, dim for line numbers and final URLs. Respect `NO_COLOR` and `--no-color`.
+- Progress while running: a single-line updating counter on stderr (`[ 42 / 118 ] checking…`), suppressed when stderr is not a TTY.
 
-- `status`: one of `"ok"`, `"redirected"`, `"broken"`.
-- `reason`: present only when `status="broken"`. Enum: `http_status`, `network_error`, `timeout`, `too_many_redirects`, `redirect_loop`, `bad_redirect`, `invalid_url`.
-- `http_status`: present when a final HTTP response was received; otherwise omitted.
-- `redirect_chain`: ordered list of `{ url, status }` for each hop before the final response. Empty when there were no redirects.
-- `duration_ms`: total wall-clock time spent probing this URL, summed across hops.
-- `occurrences[].line` is 1-based.
+### 8.2 Stderr vs stdout
 
-Progress and warnings must not appear on stdout in `--json` mode.
+- Report goes to **stdout**.
+- Progress, warnings, and errors go to **stderr**.
+- This keeps `linkrot > report.txt` clean in CI.
 
-### 7.3 Exit behavior with output
+## 9. Exit Codes
 
-The process prints the full report first (human or JSON), flushes stdout, then exits with the code defined in §4.3.
+| Code | Meaning |
+| --- | --- |
+| 0 | Scan completed; nothing at or above `--fail-on` was found. |
+| 1 | Scan completed; at least one finding at or above `--fail-on`. Default (`--fail-on=broken`) ⇒ non-zero exit on any broken link, matching the interview answer. |
+| 2 | Usage error (unknown flag, bad value, path does not exist). |
+| 3 | Internal error (unhandled exception). Stack trace on stderr. |
+| 130 | Interrupted by `SIGINT`/`SIGTERM`. Partial report still printed. |
 
-## 8. Implementation Notes
+## 10. Configuration Precedence
 
-### 8.1 Runtime and distribution
+CLI flags > environment variables > built-in defaults. Environment variables, all optional:
 
-- Target runtime: **Bun** (latest stable at implementation time). No Node.js compatibility guarantee.
-- Language: TypeScript, strict mode.
-- Entry point: `src/cli.ts`. Built with `bun build --compile --outfile=dist/tiny-linkrot src/cli.ts`.
-- The compiled binary is the only artifact for v0.1. It is checked in to GitHub Releases on tagged versions; it is **not** published to npm.
-- `package.json` has no `bin` entry in v0.1 (no npm distribution).
+- `LINKROT_CONCURRENCY`, `LINKROT_TIMEOUT`, `LINKROT_RETRIES`, `LINKROT_USER_AGENT`, `LINKROT_NO_COLOR`.
 
-### 8.2 Dependencies
+No config file in v0.1.
 
-Minimize dependencies. Acceptable third-party modules in v0.1:
+## 11. Non-Goals (v0.1)
 
-- One Markdown parser (`marked` or `markdown-it`).
-- Optionally one tiny ANSI color module (or inline the handful of escapes).
+- JSON, SARIF, JUnit, or GitHub Actions annotation output.
+- Per-host rate limiting, robots.txt, or crawl politeness beyond a single user-agent string.
+- Authenticated requests, cookies, or proxies.
+- Link checking in non-Markdown formats (HTML, MDX, rST, AsciiDoc).
+- Cross-run caching or incremental mode.
+- Auto-fixing or suggesting replacements.
 
-No HTTP client library — use the built-in `fetch`. No CLI framework — hand-parse flags (there are only a few).
+These are deliberately parked to keep v0.1 tight; §14 tracks them.
 
-### 8.3 Concurrency primitive
+## 12. Error Handling & Robustness
 
-A minimal in-file semaphore is sufficient (an array of pending resolvers plus a counter). No dependency on `p-limit` etc.
+- File read errors abort the run with exit 2 and a clear path in the error message; partial reports are not produced for read failures (distinct from network failures).
+- Malformed Markdown does not abort: the parser's recovery mode is used and any unparseable region is skipped with a stderr warning.
+- Extremely large files (> 5 MB) emit a stderr warning but are still scanned.
+- A URL string that fails `new URL(...)` parsing is reported as `broken:network` with reason `invalid-url`.
 
-### 8.4 Errors during scan
+## 13. Testing Strategy
 
-Network errors on individual URLs are **not** propagated as process errors; they become `status: "broken"` entries with `reason: "network_error"` and a short human-readable `message` field in JSON output. Only programmer errors (unexpected exceptions) should surface as exit `3`.
+- **Unit tests** (`bun test`): Markdown extraction (fences, reference links, autolinks, images), URL normalization, classification table, exit-code mapping.
+- **Integration tests**: a local Bun HTTP server fixture that returns curated 2xx/3xx/4xx/5xx/timeout/redirect-loop responses, driven by the real CLI binary.
+- **Golden report tests**: snapshot the TTY report against fixture directories, with color forced off.
+- **No live network** in CI. A separate opt-in `bun run test:live` hits a small set of pinned URLs for smoke coverage.
 
-## 9. Testing
+## 14. Future Work (post-v0.1)
 
-v0.1 test plan (minimum bar for "done"):
+- `--format json|sarif|junit` for machine-readable output.
+- Per-host concurrency caps and `Retry-After`-aware global backoff.
+- On-disk cache keyed by URL + ETag/Last-Modified.
+- HTML / MDX / AsciiDoc extractors behind a pluggable extractor interface.
+- `--fix` suggestions using redirect targets.
+- GitHub Actions wrapper that turns `redirect`/`broken` findings into PR annotations.
 
-1. **Unit tests (Bun test)**
-   - Markdown extraction: inline, reference, autolink, image, GFM bare URL, code-block exclusion, inline-code exclusion, mailto/relative ignored.
-   - URL normalization: fragment stripping, dedup by normalized URL, invalid-URL handling.
-   - Classifier: mapping of HTTP status / network error / timeout / redirect count to `status` + `reason`.
-2. **Integration tests against a local HTTP server** (spun up in the test, no network): a fixture server that can return 200/301/302/404/500/405-then-200-on-GET, a redirect loop, a 6-hop chain, a slow endpoint (for timeout), and a connection-reset endpoint.
-3. **Golden output tests**: snapshot the JSON output for a small fixture Markdown against the fixture server; assert structural equality modulo `started_at`/`finished_at`/`duration_ms`.
-4. **Exit-code matrix**: one test per row of the §4.3 table.
+## 15. Open Questions
 
-No live-internet tests in CI.
-
-## 10. Security and Privacy Considerations
-
-- The tool issues outbound HTTP(S) requests to every URL it finds in the input file. Users should only point it at Markdown they trust or are comfortable exposing to the network.
-- Request bodies are never read into memory on GET fallback; the body is cancelled immediately after headers arrive.
-- No data from responses is persisted to disk.
-- The `User-Agent` identifies the tool so server operators can block it if desired.
-- TLS certificate validation uses Bun/`fetch` defaults; there is no flag to disable it in v0.1.
-
-## 11. Open Questions
-
-None blocking v0.1. Candidates for v0.2+:
-
-- Per-host concurrency / politeness.
-- Directory and glob input.
-- A local cache keyed by URL + ETag/Last-Modified.
-- Configurable retry policy.
-- Anchor (fragment) validation for same-origin HTML targets.
-
-## 12. Acceptance Criteria
-
-v0.1 is considered complete when **all** of the following hold:
-
-- `tiny-linkrot README.md` on a file with a mix of good, 404, and redirected links produces the grouped human report described in §7.1 and exits `1`.
-- `tiny-linkrot --json README.md` produces a JSON document matching §7.2, validated against the documented schema.
-- `bun build --compile` produces a working single-file binary on macOS (arm64 + x64) and Linux (x64) that runs on a machine without Bun installed.
-- The test plan in §9 passes in CI with no network egress.
-- The README documents: install, basic usage, `--json`, the concurrency/politeness caveat (§6.4), and exit-code semantics.
+1. Should reference-style link labels that are defined but never used be reported as warnings? (Leaning **no** for v0.1 — out of scope for link rot.)
+2. Should we treat 2xx responses with suspicious bodies (e.g., soft-404s like `<title>Not Found</title>` returning 200) as broken? (Leaning **no** — false-positive risk too high without per-site heuristics.)
+3. Is `User-Agent` customization enough, or do we also need `--header K:V` for niche sites that demand `Accept: text/html`? (Defer to v0.2.)

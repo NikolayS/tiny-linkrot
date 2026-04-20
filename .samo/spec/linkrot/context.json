@@ -19,9 +19,9 @@
     },
     {
       "path": ".samo/spec/linkrot/state.json",
-      "bytes": 444,
-      "tokens": 111,
-      "blob": "0ec036444f90e71effce15c45c3e7f03f6bc89a4",
+      "bytes": 420,
+      "tokens": 105,
+      "blob": "c4c8f44e535fc2496adda4f629476b7ed91371cc",
       "included": true,
       "risk_flags": []
     },
@@ -35,9 +35,9 @@
     },
     {
       "path": ".samo/config.json",
-      "bytes": 1379,
-      "tokens": 345,
-      "blob": "eb416bdd6d5904f15ed4065947ffe0537bd218e4",
+      "bytes": 1495,
+      "tokens": 374,
+      "blob": "5a2ca420c86bd8ac7c741351f9c1b82fde9cc803",
       "included": true,
       "risk_flags": []
     }
@@ -45,7 +45,7 @@
   "risk_flags": [],
   "budget": {
     "phase": "draft",
-    "tokens_used": 646,
+    "tokens_used": 669,
     "tokens_budget": 30000
   }
 }

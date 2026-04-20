@@ -6,18 +6,21 @@ See SPEC.md for the full goal statement.
 
 ## Scope summary
 
-- 1. Overview
-- 2. Goals and Non-Goals
-- 3. User Stories
+- 1. Purpose
+- 2. Persona & Scope
+- 3. Runtime & Distribution
 - 4. CLI Surface
-- 5. Input Handling
-- 6. Network Probing
-- 7. Output
-- 8. Implementation Notes
-- 9. Testing
-- 10. Security and Privacy Considerations
-- 11. Open Questions
-- 12. Acceptance Criteria
+- 5. Link Extraction
+- 6. HTTP Probing
+- 7. Concurrency Model
+- 8. Output
+- 9. Exit Codes
+- 10. Configuration Precedence
+- 11. Non-Goals (v0.1)
+- 12. Error Handling & Robustness
+- 13. Testing Strategy
+- 14. Future Work (post-v0.1)
+- 15. Open Questions
 
 ## Next action
 
